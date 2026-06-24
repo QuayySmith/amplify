@@ -50,222 +50,223 @@
   <div class="modal" id="authModal" aria-hidden="true"><div class="modal-card"><button class="close" data-action="close-auth" aria-label="Close">×</button><h2 id="authTitle">Join Amplify</h2><p id="authText">Create your artist profile and start building your music career.</p><div class="auth-tabs"><button class="auth-tab active" id="signupTab" data-mode="signup">Sign Up</button><button class="auth-tab" id="loginTab" data-mode="login">Sign In</button></div><button class="google-btn" data-action="google"><span class="google-g">G</span> Continue with Google</button><div class="divider">or use email</div><div class="error" id="authError"></div><div class="success" id="authSuccess"></div><form class="form" id="signupForm"><input id="artistName" type="text" placeholder="Artist name" autocomplete="name" required /><input id="signupEmail" type="email" placeholder="Email address" autocomplete="email" required /><input id="signupPassword" type="password" placeholder="Create password (6+ characters)" autocomplete="new-password" minlength="6" required /><select id="artistType" required><option value="">I am a...</option><option>Artist</option><option>Producer</option><option>Engineer</option><option>Designer</option><option>Label Scout</option></select><button class="btn primary full" type="submit">Create Account</button><div class="auth-note">Real Firebase account creation is connected. Your profile is saved securely in Amplify's Firebase project.</div></form><form class="form hidden" id="loginForm"><input id="loginEmail" type="email" placeholder="Email address" autocomplete="email" required /><input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password" required /><button class="btn primary full" type="submit">Sign In</button><button class="btn ghost full" type="button" data-action="demo-login">Use Demo Artist Account</button><div class="auth-note">Use your real Amplify account email and password. Google sign-in is also available above.</div></form></div></div>
   <div class="toast" id="toast"></div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-    import { getAnalytics, isSupported as analyticsSupported } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-analytics.js";
-    import {
-      getAuth,
-      createUserWithEmailAndPassword,
-      signInWithEmailAndPassword,
-      signInWithPopup,
-      GoogleAuthProvider,
-      onAuthStateChanged,
-      signOut,
-      updateProfile
-    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-    import {
-      getFirestore,
-      doc,
-      setDoc,
-      getDoc,
-      serverTimestamp
-    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', function(){
+      'use strict';
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyB-eXIip4lEQU1Amyg8JyeBpCPI8GmhC3M",
-      authDomain: "amplify-206c1.firebaseapp.com",
-      projectId: "amplify-206c1",
-      storageBucket: "amplify-206c1.firebasestorage.app",
-      messagingSenderId: "44774702105",
-      appId: "1:44774702105:web:4f8a96d40689d771e47e88",
-      measurementId: "G-NB61VRZQNM"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    analyticsSupported().then(ok => { if (ok) getAnalytics(app); }).catch(() => {});
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-    const googleProvider = new GoogleAuthProvider();
-
-    const $ = id => document.getElementById(id);
-    const toast = msg => {
-      const t = $('toast');
-      t.textContent = msg;
-      t.classList.add('show');
-      clearTimeout(window.__ampToast);
-      window.__ampToast = setTimeout(() => t.classList.remove('show'), 3500);
-    };
-    const clearMessages = () => ['authError','authSuccess'].forEach(id => $(id).classList.remove('show'));
-    const showError = msg => { $('authError').textContent = msg; $('authError').classList.add('show'); $('authSuccess').classList.remove('show'); };
-    const showSuccess = msg => { $('authSuccess').textContent = msg; $('authSuccess').classList.add('show'); $('authError').classList.remove('show'); };
-
-    function friendlyError(error){
-      const code = error?.code || '';
-      if(code.includes('auth/email-already-in-use')) return 'That email already has an account. Sign in instead.';
-      if(code.includes('auth/invalid-email')) return 'Enter a valid email address.';
-      if(code.includes('auth/weak-password')) return 'Use a stronger password with at least 6 characters.';
-      if(code.includes('auth/user-not-found') || code.includes('auth/invalid-credential') || code.includes('auth/wrong-password')) return 'Email or password is incorrect.';
-      if(code.includes('auth/popup-closed-by-user')) return 'Google sign-in was closed before finishing.';
-      if(code.includes('auth/unauthorized-domain')) return 'This domain is not allowed in Firebase yet. Add your GitHub Pages URL in Firebase Authentication settings.';
-      if(code.includes('permission-denied')) return 'Firestore permission denied. Enable Firestore or update your rules.';
-      return error?.message || 'Something went wrong. Try again.';
-    }
-
-    function setMode(mode){
-      const signup = mode !== 'login';
-      $('signupTab').classList.toggle('active', signup);
-      $('loginTab').classList.toggle('active', !signup);
-      $('signupForm').classList.toggle('hidden', !signup);
-      $('loginForm').classList.toggle('hidden', signup);
-      $('authTitle').textContent = signup ? 'Join Amplify' : 'Sign In to Amplify';
-      $('authText').textContent = signup ? 'Create your artist profile and start building your music career.' : 'Welcome back. Sign in to your artist dashboard.';
-      clearMessages();
-    }
-    function openAuth(mode){
-      setMode(mode || 'signup');
-      $('authModal').classList.add('active');
-      $('authModal').setAttribute('aria-hidden','false');
-      setTimeout(() => (mode === 'login' ? $('loginEmail') : $('artistName'))?.focus(), 50);
-    }
-    function closeAuth(){
-      $('authModal').classList.remove('active');
-      $('authModal').setAttribute('aria-hidden','true');
-      clearMessages();
-    }
-    function scrollToSection(id){
-      const el = $(id);
-      if(el){
-        document.body.classList.remove('mobile-open');
-        el.scrollIntoView({behavior:'smooth', block:'start'});
-        history.replaceState(null, '', '#' + id);
-      }
-    }
-    function updateUI(user, profile={}){
-      const logged = !!user;
-      document.body.classList.toggle('logged-in', logged);
-      $('guestActions').classList.toggle('hidden', logged);
-      $('memberActions').classList.toggle('hidden', !logged);
-      if(logged){
-        const displayName = profile.artistName || user.displayName || user.email?.split('@')[0] || 'Artist';
-        const type = profile.artistType || 'Artist';
-        $('navName').textContent = displayName.split(' ')[0];
-        $('navAvatar').textContent = displayName.charAt(0).toUpperCase();
-        $('dashWelcome').textContent = `Signed in as ${displayName} (${type}). Your artist account is active and connected to Firebase.`;
-      }
-    }
-    async function saveUserProfile(user, extra={}){
-      const ref = doc(db, 'users', user.uid);
-      const old = await getDoc(ref);
-      const base = {
-        uid: user.uid,
-        email: user.email || '',
-        artistName: extra.artistName || user.displayName || user.email?.split('@')[0] || 'Artist',
-        artistType: extra.artistType || 'Artist',
-        photoURL: user.photoURL || '',
-        updatedAt: serverTimestamp()
+      const firebaseConfig = {
+        apiKey: "AIzaSyB-eXIip4lEQU1Amyg8JyeBpCPI8GmhC3M",
+        authDomain: "amplify-206c1.firebaseapp.com",
+        projectId: "amplify-206c1",
+        storageBucket: "amplify-206c1.firebasestorage.app",
+        messagingSenderId: "44774702105",
+        appId: "1:44774702105:web:4f8a96d40689d771e47e88",
+        measurementId: "G-NB61VRZQNM"
       };
-      await setDoc(ref, old.exists() ? base : {...base, createdAt: serverTimestamp()}, {merge:true});
-      return base;
-    }
-    async function getUserProfile(user){
+
+      const $ = id => document.getElementById(id);
+      const toast = msg => {
+        const t = $('toast');
+        if(!t) return alert(msg);
+        t.textContent = msg;
+        t.classList.add('show');
+        clearTimeout(window.__ampToast);
+        window.__ampToast = setTimeout(() => t.classList.remove('show'), 3500);
+      };
+      const clearMessages = () => ['authError','authSuccess'].forEach(id => { const el=$(id); if(el) el.classList.remove('show'); });
+      const showError = msg => { const e=$('authError'), s=$('authSuccess'); if(e){ e.textContent=msg; e.classList.add('show'); } if(s) s.classList.remove('show'); };
+      const showSuccess = msg => { const s=$('authSuccess'), e=$('authError'); if(s){ s.textContent=msg; s.classList.add('show'); } if(e) e.classList.remove('show'); };
+
+      let auth = null, db = null, googleProvider = null, firebaseReady = false;
       try{
-        const ref = doc(db, 'users', user.uid);
-        const snap = await getDoc(ref);
-        if(snap.exists()) return snap.data();
-        return await saveUserProfile(user);
+        if(window.firebase && !firebase.apps.length){ firebase.initializeApp(firebaseConfig); }
+        auth = firebase.auth();
+        db = firebase.firestore();
+        googleProvider = new firebase.auth.GoogleAuthProvider();
+        firebaseReady = true;
       }catch(err){
-        console.warn(err);
-        return {artistName: user.displayName || user.email?.split('@')[0] || 'Artist', artistType:'Artist'};
+        console.error('Firebase failed to start:', err);
+        showError('Firebase did not load. Refresh the page or check your internet connection.');
       }
-    }
-    async function afterLogin(user, message='Signed in successfully.'){
-      const profile = await getUserProfile(user);
-      updateUI(user, profile);
-      closeAuth();
-      toast(message);
-      setTimeout(() => scrollToSection('dashboard'), 80);
-    }
-    function handleLocked(name){
-      if(auth.currentUser){
-        scrollToSection('dashboard');
-        toast(name.charAt(0).toUpperCase()+name.slice(1)+' opened.');
-      }else{
-        openAuth('signup');
-        toast('Create a free account first to use '+name+'.');
+
+      function friendlyError(error){
+        const code = error && error.code ? error.code : '';
+        if(code.includes('auth/email-already-in-use')) return 'That email already has an account. Sign in instead.';
+        if(code.includes('auth/invalid-email')) return 'Enter a valid email address.';
+        if(code.includes('auth/weak-password')) return 'Use a stronger password with at least 6 characters.';
+        if(code.includes('auth/user-not-found') || code.includes('auth/invalid-credential') || code.includes('auth/wrong-password')) return 'Email or password is incorrect.';
+        if(code.includes('auth/popup-closed-by-user')) return 'Google sign-in was closed before finishing.';
+        if(code.includes('auth/popup-blocked')) return 'Your browser blocked the Google pop-up. Try again or use email sign-up.';
+        if(code.includes('auth/unauthorized-domain')) return 'Add quayysmith.github.io to Firebase Authentication → Settings → Authorized domains.';
+        if(code.includes('auth/operation-not-allowed')) return 'Enable Email/Password and Google in Firebase Authentication → Sign-in method.';
+        if(code.includes('permission-denied')) return 'Firestore needs to be enabled or its rules need updating. The account may still be created.';
+        return (error && error.message) ? error.message : 'Something went wrong. Try again.';
       }
-    }
 
-    $('signupForm').addEventListener('submit', async e => {
-      e.preventDefault();
-      clearMessages();
-      const name = $('artistName').value.trim();
-      const email = $('signupEmail').value.trim();
-      const password = $('signupPassword').value;
-      const type = $('artistType').value;
-      if(!name || !email || !password || !type){ showError('Fill out every field.'); return; }
-      try{
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(cred.user, {displayName: name});
-        await saveUserProfile(cred.user, {artistName:name, artistType:type});
-        showSuccess('Account created.');
-        await afterLogin(cred.user, 'Welcome to Amplify, '+name+'!');
-      }catch(err){ showError(friendlyError(err)); }
-    });
-
-    $('loginForm').addEventListener('submit', async e => {
-      e.preventDefault();
-      clearMessages();
-      try{
-        const cred = await signInWithEmailAndPassword(auth, $('loginEmail').value.trim(), $('loginPassword').value);
-        await afterLogin(cred.user, 'Signed in successfully.');
-      }catch(err){ showError(friendlyError(err)); }
-    });
-
-    document.addEventListener('click', async e => {
-      const target = e.target.closest('[data-auth],[data-action],[data-scroll],[data-mode],[data-requires-login]');
-      if(!target) return;
-      if(target.matches('a[href="#"]')) e.preventDefault();
-      if(target.dataset.auth){ e.preventDefault(); openAuth(target.dataset.auth); return; }
-      if(target.dataset.mode){ setMode(target.dataset.mode); return; }
-      if(target.dataset.scroll){ e.preventDefault(); scrollToSection(target.dataset.scroll); return; }
-      if(target.dataset.requiresLogin){ handleLocked(target.dataset.requiresLogin); return; }
-      const action = target.dataset.action;
-      if(action === 'menu') document.body.classList.toggle('mobile-open');
-      if(action === 'close-auth') closeAuth();
-      if(action === 'logout'){
-        await signOut(auth);
-        updateUI(null);
-        toast('Logged out.');
-        scrollToSection('home');
+      function setMode(mode){
+        const signup = mode !== 'login';
+        $('signupTab')?.classList.toggle('active', signup);
+        $('loginTab')?.classList.toggle('active', !signup);
+        $('signupForm')?.classList.toggle('hidden', !signup);
+        $('loginForm')?.classList.toggle('hidden', signup);
+        if($('authTitle')) $('authTitle').textContent = signup ? 'Join Amplify' : 'Sign In to Amplify';
+        if($('authText')) $('authText').textContent = signup ? 'Create your artist profile and start building your music career.' : 'Welcome back. Sign in to your artist dashboard.';
+        clearMessages();
       }
-      if(action === 'google'){
+      function openAuth(mode){
+        setMode(mode || 'signup');
+        $('authModal')?.classList.add('active');
+        $('authModal')?.setAttribute('aria-hidden','false');
+        setTimeout(() => (mode === 'login' ? $('loginEmail') : $('artistName'))?.focus(), 50);
+      }
+      function closeAuth(){
+        $('authModal')?.classList.remove('active');
+        $('authModal')?.setAttribute('aria-hidden','true');
+        clearMessages();
+      }
+      function scrollToSection(id){
+        const el = $(id);
+        if(el){
+          document.body.classList.remove('mobile-open');
+          el.scrollIntoView({behavior:'smooth', block:'start'});
+          try{ history.replaceState(null, '', '#' + id); }catch(e){}
+        }
+      }
+      function updateUI(user, profile={}){
+        const logged = !!user;
+        document.body.classList.toggle('logged-in', logged);
+        $('guestActions')?.classList.toggle('hidden', logged);
+        $('memberActions')?.classList.toggle('hidden', !logged);
+        if(logged){
+          const displayName = profile.artistName || user.displayName || (user.email ? user.email.split('@')[0] : 'Artist');
+          const type = profile.artistType || 'Artist';
+          if($('navName')) $('navName').textContent = displayName.split(' ')[0];
+          if($('navAvatar')) $('navAvatar').textContent = displayName.charAt(0).toUpperCase();
+          if($('dashWelcome')) $('dashWelcome').textContent = `Signed in as ${displayName} (${type}). Your artist account is active and connected to Firebase.`;
+        }
+      }
+      async function saveUserProfile(user, extra={}){
+        const base = {
+          uid: user.uid,
+          email: user.email || '',
+          artistName: extra.artistName || user.displayName || (user.email ? user.email.split('@')[0] : 'Artist'),
+          artistType: extra.artistType || 'Artist',
+          photoURL: user.photoURL || '',
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
         try{
-          const cred = await signInWithPopup(auth, googleProvider);
-          await saveUserProfile(cred.user, {artistName: cred.user.displayName || 'Google Artist', artistType:'Artist'});
-          await afterLogin(cred.user, 'Google sign-in connected.');
-        }catch(err){ showError(friendlyError(err)); }
+          const ref = db.collection('users').doc(user.uid);
+          const old = await ref.get();
+          if(!old.exists) base.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+          await ref.set(base, {merge:true});
+        }catch(err){
+          console.warn('Profile save skipped:', err);
+        }
+        return base;
       }
-      if(action === 'demo-login'){
-        showError('Demo login has been removed. Use a real email account or Google sign-in.');
+      async function getUserProfile(user){
+        try{
+          const snap = await db.collection('users').doc(user.uid).get();
+          if(snap.exists) return snap.data();
+        }catch(err){ console.warn('Profile read skipped:', err); }
+        return saveUserProfile(user);
       }
-      if(action === 'waitlist'){ openAuth('signup'); toast('Join the waitlist by creating a free account.'); }
-      if(action === 'play') toast('Preview playing: '+(target.dataset.song || 'track'));
-      if(action === 'upload-demo') toast('Music upload is the next Firebase Storage feature.');
-      if(action === 'promote-demo') toast('Promo campaigns are ready for the next build.');
-      if(action === 'analytics-demo') toast('Analytics dashboard opened.');
-      if(action === 'social') toast('Social links can be connected when pages are ready.');
-    });
-
-    $('authModal').addEventListener('click', e => { if(e.target.id === 'authModal') closeAuth(); });
-    document.addEventListener('keydown', e => { if(e.key === 'Escape') closeAuth(); });
-
-    onAuthStateChanged(auth, async user => {
-      if(user){
+      async function afterLogin(user, message='Signed in successfully.'){
         const profile = await getUserProfile(user);
         updateUI(user, profile);
-      }else{
-        updateUI(null);
+        closeAuth();
+        toast(message);
+        setTimeout(() => scrollToSection('dashboard'), 80);
       }
+      function handleLocked(name){
+        if(auth && auth.currentUser){
+          scrollToSection('dashboard');
+          toast(name.charAt(0).toUpperCase()+name.slice(1)+' opened.');
+        }else{
+          openAuth('signup');
+          toast('Create a free account first to use '+name+'.');
+        }
+      }
+
+      $('signupForm')?.addEventListener('submit', async e => {
+        e.preventDefault();
+        clearMessages();
+        if(!firebaseReady){ showError('Firebase is not loaded yet. Refresh and try again.'); return; }
+        const name = $('artistName').value.trim();
+        const email = $('signupEmail').value.trim();
+        const password = $('signupPassword').value;
+        const type = $('artistType').value;
+        if(!name || !email || !password || !type){ showError('Fill out every field.'); return; }
+        try{
+          const cred = await auth.createUserWithEmailAndPassword(email, password);
+          await cred.user.updateProfile({displayName: name});
+          await saveUserProfile(cred.user, {artistName:name, artistType:type});
+          showSuccess('Account created.');
+          await afterLogin(cred.user, 'Welcome to Amplify, '+name+'!');
+        }catch(err){ showError(friendlyError(err)); }
+      });
+
+      $('loginForm')?.addEventListener('submit', async e => {
+        e.preventDefault();
+        clearMessages();
+        if(!firebaseReady){ showError('Firebase is not loaded yet. Refresh and try again.'); return; }
+        try{
+          const cred = await auth.signInWithEmailAndPassword($('loginEmail').value.trim(), $('loginPassword').value);
+          await afterLogin(cred.user, 'Signed in successfully.');
+        }catch(err){ showError(friendlyError(err)); }
+      });
+
+      document.addEventListener('click', async e => {
+        const target = e.target.closest('[data-auth],[data-action],[data-scroll],[data-mode],[data-requires-login]');
+        if(!target) return;
+        if(target.matches('a[href="#"]')) e.preventDefault();
+        if(target.dataset.auth){ e.preventDefault(); openAuth(target.dataset.auth); return; }
+        if(target.dataset.mode){ setMode(target.dataset.mode); return; }
+        if(target.dataset.scroll){ e.preventDefault(); scrollToSection(target.dataset.scroll); return; }
+        if(target.dataset.requiresLogin){ handleLocked(target.dataset.requiresLogin); return; }
+        const action = target.dataset.action;
+        if(action === 'menu') document.body.classList.toggle('mobile-open');
+        if(action === 'close-auth') closeAuth();
+        if(action === 'logout'){
+          if(auth) await auth.signOut();
+          updateUI(null);
+          toast('Logged out.');
+          scrollToSection('home');
+        }
+        if(action === 'google'){
+          clearMessages();
+          if(!firebaseReady){ showError('Firebase is not loaded yet. Refresh and try again.'); return; }
+          try{
+            const cred = await auth.signInWithPopup(googleProvider);
+            await saveUserProfile(cred.user, {artistName: cred.user.displayName || 'Google Artist', artistType:'Artist'});
+            await afterLogin(cred.user, 'Google sign-in connected.');
+          }catch(err){
+            showError(friendlyError(err));
+          }
+        }
+        if(action === 'demo-login') showError('Demo login has been removed. Use a real email account or Google sign-in.');
+        if(action === 'waitlist'){ openAuth('signup'); toast('Join the waitlist by creating a free account.'); }
+        if(action === 'play') toast('Preview playing: '+(target.dataset.song || 'track'));
+        if(action === 'upload-demo') toast('Music upload is the next Firebase Storage feature.');
+        if(action === 'promote-demo') toast('Promo campaigns are ready for the next build.');
+        if(action === 'analytics-demo') toast('Analytics dashboard opened.');
+        if(action === 'social') toast('Social links can be connected when pages are ready.');
+      });
+
+      $('authModal')?.addEventListener('click', e => { if(e.target.id === 'authModal') closeAuth(); });
+      document.addEventListener('keydown', e => { if(e.key === 'Escape') closeAuth(); });
+
+      if(firebaseReady){
+        auth.onAuthStateChanged(async user => {
+          if(user){
+            const profile = await getUserProfile(user);
+            updateUI(user, profile);
+          }else updateUI(null);
+        });
+      }else updateUI(null);
     });
   </script>
 </body>
